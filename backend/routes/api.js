@@ -19,6 +19,7 @@ router.get('/groups/:id/members', groupController.getMembers);
 // Campaigns (Brand)
 router.post('/campaigns', campaignController.createCampaign);
 router.get('/campaigns', campaignController.listCampaigns);
+router.get('/campaigns/estimate-cost', campaignController.estimateCost);
 router.post('/campaigns/:id/launch', campaignController.launchCampaign);
 
 // Wallet

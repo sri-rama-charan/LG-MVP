@@ -62,8 +62,19 @@ exports.addMembers = async (req, res) => {
 
 exports.getAvailableGroups = async (req, res) => {
     try {
-        // For Brands to select
-        const groups = await Group.find({ status: 'ACTIVE' });
+        // For Brands to select with optional filtering
+        const { city, state, language, interest, profession, income_band } = req.query;
+        const query = { status: 'ACTIVE', monetization_enabled: true };
+        
+        // Build tag filters
+        if (city) query['tags.city'] = new RegExp(city, 'i');
+        if (state) query['tags.state'] = new RegExp(state, 'i');
+        if (language) query['tags.language'] = new RegExp(language, 'i');
+        if (interest) query['tags.interest'] = new RegExp(interest, 'i');
+        if (profession) query['tags.profession'] = new RegExp(profession, 'i');
+        if (income_band) query['tags.income_band'] = new RegExp(income_band, 'i');
+        
+        const groups = await Group.find(query).sort({ member_count: -1 });
         res.json(groups);
     } catch(err) {
         res.status(500).json({ error: err.message });
