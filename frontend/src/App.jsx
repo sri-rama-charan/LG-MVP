@@ -6,6 +6,7 @@ import Register from './pages/Register'; // We need to create this
 import Dashboard from './pages/Dashboard'; // Need to create
 import Groups from './pages/Groups'; // Need to create
 import Campaigns from './pages/Campaigns'; // Need to create
+import CampaignDetails from './pages/CampaignDetails';
 import Wallet from './pages/Wallet'; // Need to create
 import Marketplace from './pages/Marketplace';
 
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="groups" element={<Groups />} />
           <Route path="campaigns" element={<Campaigns />} />
+          <Route path="campaigns/:id" element={<CampaignDetails />} />
           <Route path="marketplace" element={<Marketplace />} />
           <Route path="wallet" element={<Wallet />} />
         </Route>

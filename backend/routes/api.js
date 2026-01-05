@@ -21,6 +21,9 @@ router.post('/campaigns', campaignController.createCampaign);
 router.get('/campaigns', campaignController.listCampaigns);
 router.get('/campaigns/estimate-cost', campaignController.estimateCost);
 router.post('/campaigns/:id/launch', campaignController.launchCampaign);
+router.post('/campaigns/:id/groups', campaignController.addGroups);
+router.delete('/campaigns/:id/groups/:groupId', campaignController.removeGroup);
+router.delete('/campaigns/:id', campaignController.deleteCampaign);
 
 // Wallet
 router.get('/wallet', walletController.getBalance);
