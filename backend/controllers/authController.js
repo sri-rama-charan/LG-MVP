@@ -1,35 +1,107 @@
 const User = require('../models/User');
 const Wallet = require('../models/Wallet');
-// For MVP, skipping bcrypt/jwt complexity implementation deatils, assuming basic storage or placeholder
-// In real app: use bcryptjs and jsonwebtoken
+const emailService = require('../services/emailService');
+
+// Helper to generate 6 digit OTP
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 exports.register = async (req, res) => {
   try {
     const { name, phone, email, password, role } = req.body;
-    // Check existing
-    const existing = await User.findOne({ $or: [{email}, {phone}] });
-    if (existing) return res.status(400).json({ error: 'User already exists' });
+    
+    // Check if user exists
+    let user = await User.findOne({ $or: [{email}, {phone}] });
+    
+    if (user) {
+        if (user.is_verified) {
+             return res.status(400).json({ error: 'User already exists and is verified. Please login.' });
+        }
+        // If exists but NOT verified, update it (re-send OTP flow)
+        // We update the details just in case they fixed a typo in name/role
+        user.name = name;
+        user.password_hash = password; 
+        user.role = role;
+    } else {
+        // Create new UNVERIFIED user
+        user = new User({
+            name, phone, email, password_hash: password, role, is_verified: false
+        });
+        // Create Wallet immediately (or wait for verify? Better wait, but for code simplicity sticking to create)
+        await Wallet.create({ owner_id: user._id });
+    }
 
-    const user = await User.create({
-      name, phone, email, password_hash: password, role // Insecure password storage for MVP Demo speed
+    // Generate OTP
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otp_expires = Date.now() + 10 * 60 * 1000; // 10 mins
+
+    await user.save();
+
+    // Send OTP via Email
+    await emailService.sendOtpEmail(email, otp);
+
+    res.status(200).json({ 
+        message: 'OTP sent to email', 
+        status: 'PENDING_OTP',
+        email: email // Return email to confirm where it went
     });
 
-    // Create Wallet for Brands/GAs
-    await Wallet.create({ owner_id: user._id });
-
-    res.status(201).json({ message: 'User registered', userId: user._id });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
+};
+
+exports.verifyOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        
+        if (user.is_verified) {
+            return res.status(200).json({ message: 'User already verified', user });
+        }
+
+        if (user.otp !== otp) {
+            return res.status(400).json({ error: 'Invalid OTP' });
+        }
+
+        if (user.otp_expires < Date.now()) {
+            return res.status(400).json({ error: 'OTP Expired' });
+        }
+
+        // Success
+        user.is_verified = true;
+        user.otp = undefined;
+        user.otp_expires = undefined;
+        await user.save();
+
+        res.json({ message: 'Verification successful', user });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 };
 
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
+    
     if (!user || user.password_hash !== password) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    // Enforce Verification
+    if (!user.is_verified) {
+        return res.status(403).json({ 
+            error: 'Account not verified', 
+            status: 'PENDING_OTP',
+            email: user.email 
+        });
+    }
+
     res.json({ message: 'Login successful', user });
   } catch (err) {
     res.status(500).json({ error: err.message });

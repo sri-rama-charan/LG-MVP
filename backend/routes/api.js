@@ -7,6 +7,7 @@ const walletController = require('../controllers/walletController');
 
 // Auth
 router.post('/auth/register', authController.register);
+router.post('/auth/verify-otp', authController.verifyOtp);
 router.post('/auth/login', authController.login);
 
 // Groups (GA)
