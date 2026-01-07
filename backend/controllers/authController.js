@@ -47,6 +47,10 @@ exports.register = async (req, res) => {
     });
 
   } catch (err) {
+    if (err.code === 11000) {
+        const field = Object.keys(err.keyPattern)[0];
+        return res.status(400).json({ error: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists. Please login.` });
+    }
     console.error(err);
     res.status(500).json({ error: err.message });
   }
@@ -64,6 +68,7 @@ exports.verifyOtp = async (req, res) => {
         }
 
         if (user.otp !== otp) {
+            console.log(`[Auth] OTP Mismatch! Received: '${otp}' (Type: ${typeof otp}) vs Stored: '${user.otp}' (Type: ${typeof user.otp})`);
             return res.status(400).json({ error: 'Invalid OTP' });
         }
 
@@ -85,16 +90,30 @@ exports.verifyOtp = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
+  console.log('[Auth] Login attempt starting...');
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    console.log(`[Auth] Queries for email: ${email}`);
     
-    if (!user || user.password_hash !== password) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    // Explicitly await and log
+    const user = await User.findOne({ email });
+    console.log(`[Auth] DB Query Result:`, user ? 'Found User' : 'User Not Found');
+    
+    if (!user) {
+        console.log('[Auth] User not found during login');
+        return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    // Simple password check (MVP)
+    if (user.password_hash !== password) {
+       console.log('[Auth] Password mismatch');
+       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Enforce Verification
-    if (!user.is_verified) {
+    console.log(`[Auth] Checking Verification Status: ${user.is_verified}`);
+    if (user.is_verified === false) { // Strict check just in case
+        console.log('[Auth] User unverified');
         return res.status(403).json({ 
             error: 'Account not verified', 
             status: 'PENDING_OTP',
@@ -102,8 +121,10 @@ exports.login = async (req, res) => {
         });
     }
 
+    console.log('[Auth] Login Successful. Sending response.');
     res.json({ message: 'Login successful', user });
   } catch (err) {
+    console.error('[Auth] Login Error:', err);
     res.status(500).json({ error: err.message });
   }
 };

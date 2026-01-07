@@ -28,10 +28,22 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (name, email, password, phone, role) => {
     try {
-      await api.post('/auth/register', { name, email, password, phone, role }); // Auto login or redirect?
-      return { success: true };
+      const res = await api.post('/auth/register', { name, email, password, phone, role });
+      return { success: true, data: res.data };
     } catch (err) {
       return { success: false, error: err.response?.data?.error || 'Registration failed' };
+    }
+  };
+
+  const verifyOtp = async (email, otp) => {
+    try {
+        const res = await api.post('/auth/verify-otp', { email, otp });
+        // OTP verified? Auto login implies setting user
+        setUser(res.data.user);
+        localStorage.setItem('user', JSON.stringify(res.data.user));
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.response?.data?.error || 'Verification failed' };
     }
   };
 
@@ -41,7 +53,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, register, verifyOtp, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

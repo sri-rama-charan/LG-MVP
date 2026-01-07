@@ -2,6 +2,7 @@ const Campaign = require('../models/Campaign');
 const Group = require('../models/Group');
 const GroupMember = require('../models/GroupMember');
 const Wallet = require('../models/Wallet');
+const User = require('../models/User');
 const { campaignQueue } = require('../jobs/queues');
 const { isWithinAllowedTimeWindow, getNextAllowedTime } = require('../config/campaignConfig');
 
@@ -29,6 +30,13 @@ exports.createCampaign = async (req, res) => {
   try {
     const { name, description, content, selected_group_ids, scheduled_at, budget_max, user_id } = req.body;
     
+    // Check User Subscription
+    const user = await User.findById(user_id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'BRAND' && (!user.subscription || !user.subscription.active)) {
+        return res.status(403).json({ error: 'Subscription Required. Please upgrade your plan.' });
+    }
+
     if (!selected_group_ids || selected_group_ids.length === 0) {
       return res.status(400).json({ error: 'At least one group must be selected' });
     }
@@ -111,6 +119,12 @@ exports.launchCampaign = async (req, res) => {
 
     if (!['DRAFT', 'SCHEDULED'].includes(campaign.status)) {
       return res.status(400).json({ error: 'Campaign already processing or done' });
+    }
+
+    // Check User Subscription for Launching as well
+    const user = await User.findById(campaign.brand_id);
+    if (user.role === 'BRAND' && (!user.subscription || !user.subscription.active)) {
+         return res.status(403).json({ error: 'Active Subscription Required to launch campaigns.' });
     }
 
     // Validate wallet balance before launching

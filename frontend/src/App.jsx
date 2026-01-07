@@ -9,6 +9,7 @@ import Campaigns from './pages/Campaigns'; // Need to create
 import CampaignDetails from './pages/CampaignDetails';
 import Wallet from './pages/Wallet'; // Need to create
 import Marketplace from './pages/Marketplace';
+import Subscription from './pages/Subscription';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="groups" element={<Groups />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="campaigns/:id" element={<CampaignDetails />} />
+          <Route path="subscription" element={<Subscription />} />
           <Route path="marketplace" element={<Marketplace />} />
           <Route path="wallet" element={<Wallet />} />
         </Route>

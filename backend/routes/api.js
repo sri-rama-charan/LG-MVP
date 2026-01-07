@@ -31,6 +31,11 @@ router.get('/wallet', walletController.getBalance);
 router.post('/wallet/topup', walletController.topUp);
 router.post('/wallet/payout', walletController.requestPayout);
 
+// Subscriptions (Brand)
+const subscriptionController = require('../controllers/subscriptionController');
+router.get('/subscriptions/plans', subscriptionController.getPlans);
+router.post('/subscriptions/purchase', subscriptionController.purchaseSubscription);
+
 // Webhooks
 const webhookController = require('../controllers/webhookController');
 router.post('/webhooks/whatsapp', webhookController.handleWhatsappWebhook);

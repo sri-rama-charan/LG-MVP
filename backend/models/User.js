@@ -9,6 +9,11 @@ const UserSchema = new mongoose.Schema({
   is_verified: { type: Boolean, default: false },
   otp: { type: String },
   otp_expires: { type: Date },
+  subscription: {
+    plan_id: { type: String, enum: ['MONTHLY', 'SIX_MONTH', 'YEARLY', 'NONE'], default: 'NONE' },
+    active: { type: Boolean, default: false },
+    expires_at: { type: Date }
+  },
   created_at: { type: Date, default: Date.now }
 });
 

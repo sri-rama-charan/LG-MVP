@@ -144,6 +144,9 @@ export default function Campaigns() {
   const handleCreate = async (e) => {
     e.preventDefault();
     
+    // Double check just in case
+    if (user.role === 'BRAND' && !user.subscription?.active) return;
+    
     if (selectedGroupIds.length === 0) {
       alert('Please select at least one group');
       return;
@@ -230,6 +233,16 @@ export default function Campaigns() {
     return now.toISOString().slice(0, 16);
   };
 
+const handleOpenCreateModal = () => {
+    if (user.role === 'BRAND' && !user.subscription?.active) {
+        if (confirm('Subscription Required: You must subscribe to a plan to create campaigns. Go to Subscription page?')) {
+            window.location.href = '/subscription'; // Force nav
+        }
+        return;
+    }
+    setShowCreateModal(true);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -241,7 +254,7 @@ export default function Campaigns() {
         </div>
         <button 
           className="btn btn-primary" 
-          onClick={() => setShowCreateModal(true)}
+          onClick={handleOpenCreateModal}
           style={{ height: '42px', fontWeight: 600 }}
         >
           <Plus size={18} style={{ marginRight: '0.5rem' }} /> New Campaign
@@ -255,7 +268,7 @@ export default function Campaigns() {
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
             Create your first campaign to start reaching your audience
           </p>
-          <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+          <button className="btn btn-primary" onClick={handleOpenCreateModal}>
             <Plus size={16} style={{ marginRight: '0.5rem' }} /> Create Campaign
           </button>
         </div>
