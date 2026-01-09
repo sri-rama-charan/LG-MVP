@@ -20,6 +20,9 @@ export default function CampaignDetails() {
   const [availableGroups, setAvailableGroups] = useState([]);
   const [selectedNewGroups, setSelectedNewGroups] = useState([]);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [showAddScheduleModal, setShowAddScheduleModal] = useState(false);
+  const [newScheduleDate, setNewScheduleDate] = useState('');
+  const [newScheduleTime, setNewScheduleTime] = useState('');
 
   useEffect(() => {
     if (user?._id && id) {
@@ -87,25 +90,37 @@ export default function CampaignDetails() {
   };
 
   const handleRemoveGroup = async (groupId) => {
-      if (!confirm('Are you sure you want to remove this group from the campaign?')) return;
-      try {
-          await api.delete(`/campaigns/${id}/groups/${groupId}`, {
-              data: { user_id: user._id }
-          });
-          setOpenMenuId(null);
-          // Refresh campaign data to reflect removal and cost update
-          fetchCampaign();
-      } catch (err) {
-          console.error(err);
-          alert('Failed to remove group: ' + (err.response?.data?.error || err.message));
-      }
+    // ... existing ... 
+  };
+
+  const handleAddSchedule = async () => {
+    try {
+        const dateTime = `${newScheduleDate}T${newScheduleTime}`;
+        await api.post(`/campaigns/${id}/schedule`, {
+            user_id: user._id,
+            additional_dates: [dateTime]
+        });
+        setShowAddScheduleModal(false);
+        setNewScheduleDate('');
+        setNewScheduleTime('');
+        fetchCampaign();
+    } catch (err) {
+        alert('Failed to add schedule: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
   if (!campaign) return null;
 
-  const estimatedTotal = campaign.budget_max ? Math.floor(campaign.budget_max / campaign.cost_per_msg) : (campaign.estimated_cost ? Math.floor(campaign.estimated_cost / campaign.cost_per_msg) : 0);
-  const progress = estimatedTotal > 0 ? Math.min((campaign.stats.sent / estimatedTotal) * 100, 100) : 0;
+  // Calculate Progress based on Estimated Cost (Target Volume) rather than Budget Max (Ceiling)
+  const estimatedTotalMessages = campaign.estimated_cost ? Math.ceil(campaign.estimated_cost / (campaign.cost_per_msg || 5)) : 0;
+  
+  let progress = 0;
+  if (campaign.status === 'COMPLETED' && (!campaign.recurrence || campaign.recurrence.type === 'NONE')) {
+      progress = 100;
+  } else if (estimatedTotalMessages > 0) {
+      progress = Math.min((campaign.stats.sent / estimatedTotalMessages) * 100, 100);
+  }
   
   const statusColors = {
       DRAFT: { bg: 'rgba(156, 163, 175, 0.2)', color: '#9ca3af', label: 'Draft' },
@@ -283,9 +298,49 @@ export default function CampaignDetails() {
       </div>
 
       {campaign.scheduled_at && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-              <Calendar size={20} />
-              <span>Scheduled for: <strong>{new Date(campaign.scheduled_at).toLocaleString()}</strong></span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '1rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)' }}>
+                  <Calendar size={20} />
+                  <span>Scheduled for: <strong>{new Date(campaign.scheduled_at).toLocaleString()}</strong></span>
+              </div>
+              
+              {campaign.recurrence && campaign.recurrence.type !== 'NONE' && (
+                  <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-primary)', fontWeight: 600, fontSize: '0.875rem' }}>
+                            <Clock size={16} />
+                            <span>Recurrence: {campaign.recurrence.type}</span>
+                        </div>
+                        {canEdit && (campaign.recurrence.type === 'CUSTOM' || campaign.recurrence.type === 'NONE') && (
+                            <button 
+                                onClick={() => setShowAddScheduleModal(true)}
+                                style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                            >
+                                <Plus size={14} /> Add Schedule
+                            </button>
+                        )}
+                      </div>
+                      
+                      {campaign.recurrence.type === 'CUSTOM' && campaign.recurrence.custom_dates && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                              {campaign.recurrence.custom_dates.map((d, i) => (
+                                  <span key={i} style={{ 
+                                      fontSize: '0.75rem', padding: '0.25rem 0.5rem', 
+                                      background: 'rgba(99, 102, 241, 0.1)', color: 'var(--text-primary)', borderRadius: '4px' 
+                                  }}>
+                                      {new Date(d).toLocaleDateString()}
+                                  </span>
+                              ))}
+                          </div>
+                      )}
+                      
+                      {['DAILY', 'WEEKLY', 'MONTHLY'].includes(campaign.recurrence.type) && campaign.recurrence.end_date && (
+                          <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                              Ending on: {new Date(campaign.recurrence.end_date).toLocaleDateString()}
+                          </div>
+                      )}
+                  </div>
+              )}
           </div>
       )}
 
@@ -342,6 +397,54 @@ export default function CampaignDetails() {
         </div>
       )}
 
+      {/* Add Schedule Modal */}
+      {showAddScheduleModal && (
+        <div className="modal-overlay" style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div className="card" style={{ width: '90%', maxWidth: '400px' }}>
+             <h3>Add Schedule</h3>
+             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                 Select a date and time to run this campaign again.
+             </p>
+             <div style={{ marginBottom: '1rem' }}>
+                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Date</label>
+                 <input 
+                    type="date" 
+                    className="input" 
+                    min={new Date().toISOString().split('T')[0]}
+                    value={newScheduleDate}
+                    onChange={e => setNewScheduleDate(e.target.value)}
+                    style={{ width: '100%', colorScheme: 'dark' }}
+                 />
+             </div>
+             <div style={{ marginBottom: '1.5rem' }}>
+                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Time</label>
+                 <input 
+                    type="time" 
+                    className="input" 
+                    value={newScheduleTime}
+                    onChange={e => setNewScheduleTime(e.target.value)}
+                    style={{ width: '100%', colorScheme: 'dark' }}
+                 />
+             </div>
+             
+             <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                 <div style={{ color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Additional Cost</div>
+                 <div style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
+                     +₹{((estimatedTotal / (campaign.recurrence?.custom_dates?.length + 1 || 1)) / 100).toFixed(2)}
+                 </div>
+             </div>
+
+             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                 <button className="btn" style={{ background: 'var(--bg-tertiary)' }} onClick={() => setShowAddScheduleModal(false)}>Cancel</button>
+                 <button className="btn btn-primary" onClick={handleAddSchedule} disabled={!newScheduleDate || !newScheduleTime}>Add Schedule</button>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="modal-overlay" style={{
@@ -359,7 +462,7 @@ export default function CampaignDetails() {
                  </p>
              </div>
              <div style={{ display: 'flex', gap: '1rem' }}>
-                 <button className="btn" style={{ flex: 1, background: 'var(--bg-tertiary)' }} onClick={() => setDeleteConfirm(false)}>
+                 <button className="btn" style={{ flex: 1, background: 'var(--bg-tertiary)', color: 'white' }} onClick={() => setDeleteConfirm(false)}>
                      Cancel
                  </button>
                  <button className="btn" style={{ flex: 1, background: 'var(--danger)', color: 'white' }} onClick={handleDelete}>

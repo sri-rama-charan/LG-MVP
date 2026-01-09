@@ -82,12 +82,21 @@ exports.verifyOtp = async (req, res) => {
         user.otp_expires = undefined;
         await user.save();
 
-        res.json({ message: 'Verification successful', user });
+        // Generate Token
+        const token = jwt.sign(
+            { id: user._id, role: user.role }, 
+            process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod',
+            { expiresIn: '7d' }
+        );
+
+        res.json({ message: 'Verification successful', token, user });
 
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
+
+const jwt = require('jsonwebtoken');
 
 exports.login = async (req, res) => {
   console.log('[Auth] Login attempt starting...');
@@ -121,8 +130,15 @@ exports.login = async (req, res) => {
         });
     }
 
+    // Generate Token
+    const token = jwt.sign(
+        { id: user._id, role: user.role }, 
+        process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod',
+        { expiresIn: '7d' }
+    );
+
     console.log('[Auth] Login Successful. Sending response.');
-    res.json({ message: 'Login successful', user });
+    res.json({ message: 'Login successful', token, user });
   } catch (err) {
     console.error('[Auth] Login Error:', err);
     res.status(500).json({ error: err.message });

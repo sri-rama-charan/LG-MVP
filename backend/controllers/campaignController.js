@@ -6,7 +6,13 @@ const User = require('../models/User');
 const { campaignQueue } = require('../jobs/queues');
 const { isWithinAllowedTimeWindow, getNextAllowedTime } = require('../config/campaignConfig');
 
-// Helper function to calculate estimated cost
+/**
+ * Calculates the estimated cost for a SINGLE run of the campaign.
+ * Sums up the cost of sending messages to all non-opted-out members in selected groups.
+ * 
+ * @param {string[]} groupIds - Array of Group IDs selected for the campaign
+ * @returns {Promise<number>} Total estimated cost in smallest currency unit (e.g., paise/cents)
+ */
 async function calculateEstimatedCost(groupIds) {
   if (!groupIds || groupIds.length === 0) return 0;
   
@@ -14,7 +20,6 @@ async function calculateEstimatedCost(groupIds) {
   let totalCost = 0;
   
   for (const group of groups) {
-    // Get unique member count for this group
     const memberCount = await GroupMember.countDocuments({ 
       group_id: group._id, 
       is_opted_out: false 
@@ -26,11 +31,51 @@ async function calculateEstimatedCost(groupIds) {
   return totalCost;
 }
 
+/**
+ * Calculates the total number of runs for a campaign based on its schedule and recurrence settings.
+ * 
+ * @param {Object} recurrence - Recurrence settings object { type, end_date, custom_dates }
+ * @param {Date} scheduledAt - The initial start date of the campaign
+ * @param {number} additionalDatesCount - Optional count of new dates being added (for addSchedule)
+ * @returns {number} Total count of execution runs
+ */
+function calculateTotalRuns(recurrence, scheduledAt, additionalDatesCount = 0) {
+    let totalRuns = 1; // Base run
+    if (!recurrence || recurrence.type === 'NONE') return totalRuns;
+
+    if (recurrence.type === 'CUSTOM' && recurrence.custom_dates) {
+        totalRuns += recurrence.custom_dates.length;
+    } else if (['DAILY', 'WEEKLY', 'MONTHLY'].includes(recurrence.type) && recurrence.end_date && scheduledAt) {
+        const start = new Date(scheduledAt);
+        const end = new Date(recurrence.end_date);
+        
+        if (end > start) {
+            let diffDays = (end - start) / (1000 * 60 * 60 * 24);
+            if (recurrence.type === 'DAILY') {
+                totalRuns += Math.floor(diffDays); 
+            } else if (recurrence.type === 'WEEKLY') {
+                totalRuns += Math.floor(diffDays / 7);
+            } else if (recurrence.type === 'MONTHLY') {
+                let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                if (end.getDate() < start.getDate()) months--;
+                totalRuns += Math.max(0, months);
+            }
+        }
+    }
+    return totalRuns + additionalDatesCount;
+}
+
+/**
+ * Creates a new campaign.
+ * Handles validation, cost estimation, and wallet balance checks.
+ * 
+ * @route POST /api/v1/campaigns
+ */
 exports.createCampaign = async (req, res) => {
   try {
     const { name, description, content, selected_group_ids, scheduled_at, budget_max, user_id } = req.body;
     
-    // Check User Subscription
+    // 1. Check User Subscription Status
     const user = await User.findById(user_id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'BRAND' && (!user.subscription || !user.subscription.active)) {
@@ -41,25 +86,10 @@ exports.createCampaign = async (req, res) => {
       return res.status(400).json({ error: 'At least one group must be selected' });
     }
     
-    // Calculate estimated cost
-    const estimatedCost = await calculateEstimatedCost(selected_group_ids);
+    // 2. Calculate estimated cost (Single Run)
+    const estimatedCostPerRun = await calculateEstimatedCost(selected_group_ids);
     
-    // Validate budget against wallet if budget is specified
-    if (budget_max) {
-      const wallet = await Wallet.findOne({ owner_id: user_id });
-      if (!wallet) {
-        return res.status(404).json({ error: 'Wallet not found' });
-      }
-      if (wallet.balance < budget_max) {
-        return res.status(400).json({ 
-          error: 'Insufficient wallet balance', 
-          balance: wallet.balance,
-          required: budget_max 
-        });
-      }
-    }
-    
-    // Handle scheduling and time window validation
+    // 3. Handle scheduling and time window validation
     let scheduledDateTime = null;
     let status = 'DRAFT';
     
@@ -71,27 +101,42 @@ exports.createCampaign = async (req, res) => {
         return res.status(400).json({ error: 'Scheduled time must be in the future' });
       }
       
-      // Check if within allowed time window
+      // Auto-adjust to next valid window if scheduled outside allowed hours
       if (!isWithinAllowedTimeWindow(scheduledDateTime)) {
         const adjustedTime = getNextAllowedTime(scheduledDateTime);
         scheduledDateTime = adjustedTime;
-        // Optionally notify user about adjustment, but for MVP we'll just adjust
       }
-      
       status = 'SCHEDULED';
     }
+
+    // 4. Calculate total projected cost if recurring
+    const recurrence = req.body.recurrence || { type: 'NONE' };
+    const totalRuns = calculateTotalRuns(recurrence, scheduledDateTime);
+    const totalEstimatedCost = estimatedCostPerRun * totalRuns;
+
+    // 5. Validate budget against wallet balance
+    const requiredFunds = budget_max || totalEstimatedCost;
+
+    if (requiredFunds) {
+      const wallet = await Wallet.findOne({ owner_id: user_id });
+      if (!wallet) return res.status(404).json({ error: 'Wallet not found' });
+      if (wallet.balance < requiredFunds) {
+        return res.status(400).json({ 
+          error: `Insufficient wallet balance for ${totalRuns} run(s)`, 
+          balance: wallet.balance,
+          required: requiredFunds 
+        });
+      }
+    }
     
-    // Get average cost per message from selected groups
-    // Get weighted average cost per message
+    // 6. Calculate Weighted Average Cost per Message for statistics
     const groups = await Group.find({ _id: { $in: selected_group_ids } });
     const totalMembers = groups.reduce((sum, g) => sum + (g.member_count || 0), 0);
-    
-    // We already have estimatedCost (Total Cost). 
-    // Weighted Avg = Total Cost / Total Members
     const avgCostPerMsg = totalMembers > 0 
-      ? Math.round(estimatedCost / totalMembers) 
+      ? Math.round(estimatedCostPerRun / totalMembers) 
       : (groups.length > 0 ? groups[0].price_per_message : 5);
     
+    // 7. Persist Campaign
     const campaign = await Campaign.create({
       brand_id: user_id,
       name,
@@ -99,10 +144,11 @@ exports.createCampaign = async (req, res) => {
       content,
       selected_group_ids,
       scheduled_at: scheduledDateTime,
-      budget_max: budget_max || estimatedCost, // Use estimated cost if budget not specified
-      estimated_cost: estimatedCost,
+      budget_max: budget_max || totalEstimatedCost,
+      estimated_cost: totalEstimatedCost,
       cost_per_msg: avgCostPerMsg,
-      status
+      status,
+      recurrence: recurrence
     });
     
     res.status(201).json(campaign);
@@ -111,6 +157,35 @@ exports.createCampaign = async (req, res) => {
   }
 };
 
+// ... existing exports.launchCampaign, listCampaigns, estimateCost ...
+
+// Copy them ? No, I'll use replace_file_content smartly or just replace chunks.
+// The complexity argument is high, so I should be careful.
+// I will just replace the helper functions and createCampaign first, 
+// then I will replace addGroups/removeGroup in a second call or same call if contiguous?
+// They are not contiguous. createCampaign is at top. addGroups is lower.
+
+// I will target `addGroups` and `removeGroup` specifically in this tool call.
+// And I will insert the helper at the top separately? Or duplicate logic inside `addGroups`?
+// Duplicating logic is bad. I should declare `calculateTotalRuns` at module scope.
+// But I can't easily insert at module scope AND update functions in one replace call if not contiguous.
+
+// Strategy:
+// 1. Insert `calculateTotalRuns` at the top (after calculateEstimatedCost).
+// 2. Update `createCampaign` to use it (optional, but good for cleanup).
+// 3. Update `addGroups`.
+// 4. Update `removeGroup`.
+
+// Since I can't do non-contiguous edits in one `replace_file_content`, I need `multi_replace_file_content`.
+// Ah, the user manual says `multi_replace_file_content` exists! I should use it.
+
+
+/**
+ * Launches a campaign explicitly (Manual Trigger).
+ * Supports overriding schedules and delayed execution if outside allowed time windows.
+ * 
+ * @route POST /api/v1/campaigns/:id/launch
+ */
 exports.launchCampaign = async (req, res) => {
   try {
     const { id } = req.params; // Campaign ID
@@ -121,13 +196,13 @@ exports.launchCampaign = async (req, res) => {
       return res.status(400).json({ error: 'Campaign already processing or done' });
     }
 
-    // Check User Subscription for Launching as well
+    // 1. Check User Subscription
     const user = await User.findById(campaign.brand_id);
     if (user.role === 'BRAND' && (!user.subscription || !user.subscription.active)) {
          return res.status(403).json({ error: 'Active Subscription Required to launch campaigns.' });
     }
 
-    // Validate wallet balance before launching
+    // 2. Validate wallet balance again before launching
     const wallet = await Wallet.findOne({ owner_id: campaign.brand_id });
     if (!wallet) {
       return res.status(404).json({ error: 'Wallet not found' });
@@ -142,12 +217,20 @@ exports.launchCampaign = async (req, res) => {
       });
     }
 
-    // Check if scheduled campaign is ready to launch
+    // 3. Check Schedule & Overrides
+    const { immediate } = req.body;
+    let delay = 0;
+    
     if (campaign.scheduled_at) {
+      // Manual Launch Override: If user clicks "Launch Now" on a scheduled campaign, reset schedule to NOW
+      if (immediate) {
+          console.log(`[Launch] Manual override for campaign ${id}. Resetting schedule to NOW.`);
+          campaign.scheduled_at = new Date(); 
+      }
+
       const now = new Date();
       if (campaign.scheduled_at > now) {
-        // Campaign is scheduled for future, keep as SCHEDULED
-        // In production, you'd have a scheduler check these
+        // Campaign is scheduled for future (and no override), keep as SCHEDULED
         return res.json({ 
           message: 'Campaign scheduled', 
           campaignId: id,
@@ -155,24 +238,23 @@ exports.launchCampaign = async (req, res) => {
         });
       }
       
-      // Check time window for immediate scheduled campaigns
+      // 4. Check Time Window Compliance
+      // If outside allowed window (e.g., 9 AM - 9 PM), calculate delay instead of blocking
       if (!isWithinAllowedTimeWindow(now)) {
         const nextWindow = getNextAllowedTime(now);
-        return res.status(400).json({ 
-          error: 'Cannot launch outside allowed time window',
-          nextAllowedTime: nextWindow,
-          allowedWindow: '9 AM - 9 PM'
-        });
+        delay = nextWindow - now;
+        console.log(`[Launch] Outside window. Queuing with delay: ${delay}ms`);
       }
     }
 
-    // Update status and add to queue
+    // 5. Update Status and Add to Queue
     campaign.status = 'PROCESSING';
     await campaign.save();
     
-    await campaignQueue.add({ campaignId: campaign._id });
+    // Add to Bull Queue with optional delay
+    await campaignQueue.add({ campaignId: campaign._id }, { delay });
 
-    res.json({ message: 'Campaign launched', campaignId: id });
+    res.json({ message: delay > 0 ? 'Campaign queued for next window' : 'Campaign launched', campaignId: id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -249,9 +331,14 @@ exports.addGroups = async (req, res) => {
         // Merge IDs
         const allGroupIds = [...campaign.selected_group_ids, ...newGroupIds];
 
-        // Recalculate TOTAL cost from scratch for all groups
-        // This ensures self-healing if previous calc was wrong
-        const totalEstimatedCost = await calculateEstimatedCost(allGroupIds);
+        // Recalculate estimated cost per run
+        const estimatedCostPerRun = await calculateEstimatedCost(allGroupIds);
+
+        // Calculate Total Runs
+        const totalRuns = calculateTotalRuns(campaign.recurrence, campaign.scheduled_at);
+        
+        // Total Estimated Cost = Cost Per Run * Total Runs
+        const totalEstimatedCost = estimatedCostPerRun * totalRuns;
 
         // Check wallet against NEW total if budget set
         if (campaign.budget_max) {
@@ -266,21 +353,15 @@ exports.addGroups = async (req, res) => {
         campaign.estimated_cost = totalEstimatedCost;
         
         // Recalculate Weighted Average Cost per Message
-        // Weighted Avg = Total Estimated Cost / Total Members
+        // Weighted Avg = Estimated Cost Per Run / Total Members
         // We know Total Cost. We need Total Members.
         // Re-fetch groups to get details
         const groups = await Group.find({ _id: { $in: allGroupIds } });
         
-        // We need accurate member count (sum of GroupMember counts, or approximate from Group.member_count)
-        // Group.member_count is maintained by addMembers, so it should be fast and reasonably accurate.
-        // Or we can sum up unit costs: (Cost / Members).
-        
-        let totalMembers = 0;
-        // Ideally fetch exact counts again if we want precision, but Group.member_count is standard
-        totalMembers = groups.reduce((sum, g) => sum + (g.member_count || 0), 0);
+        let totalMembers = groups.reduce((sum, g) => sum + (g.member_count || 0), 0);
         
         if (totalMembers > 0) {
-            campaign.cost_per_msg = Math.round(totalEstimatedCost / totalMembers); // Weighted Average
+            campaign.cost_per_msg = Math.round(estimatedCostPerRun / totalMembers); // Weighted Average
         } else {
              // Fallback/Default if 0 members
             campaign.cost_per_msg = 5; 
@@ -317,8 +398,13 @@ exports.removeGroup = async (req, res) => {
             return res.status(404).json({ error: 'Group not found in campaign' });
         }
 
-        // Recalculate TOTAL cost
-        const totalEstimatedCost = await calculateEstimatedCost(newGroupIds);
+        // Recalculate estimated cost per run
+        const estimatedCostPerRun = await calculateEstimatedCost(newGroupIds);
+        
+        // Calculate Total Runs
+        const totalRuns = calculateTotalRuns(campaign.recurrence, campaign.scheduled_at);
+        
+        const totalEstimatedCost = estimatedCostPerRun * totalRuns;
 
         // Update Campaign
         campaign.selected_group_ids = newGroupIds;
@@ -329,7 +415,7 @@ exports.removeGroup = async (req, res) => {
         const totalMembers = groups.reduce((sum, g) => sum + (g.member_count || 0), 0);
         
         if (totalMembers > 0) {
-            campaign.cost_per_msg = Math.round(totalEstimatedCost / totalMembers);
+            campaign.cost_per_msg = Math.round(estimatedCostPerRun / totalMembers);
         } else {
             campaign.cost_per_msg = 5; // Default
         }
@@ -388,3 +474,84 @@ exports.deleteCampaign = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 }
+
+exports.addSchedule = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { user_id, additional_dates } = req.body; // additional_dates is array of ISO strings
+
+        const campaign = await Campaign.findById(id);
+        if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+        if (campaign.brand_id.toString() !== user_id) {
+            return res.status(403).json({ error: 'Unauthorized' });
+        }
+
+        if (!['DRAFT', 'SCHEDULED'].includes(campaign.status)) {
+            return res.status(400).json({ error: 'Can only modify DRAFT or SCHEDULED campaigns' });
+        }
+        
+        if (!additional_dates || additional_dates.length === 0) {
+            return res.status(400).json({ error: 'No dates provided' });
+        }
+
+        // 1. Calculate Cost Per Run
+        const estimatedCostPerRun = await calculateEstimatedCost(campaign.selected_group_ids);
+        
+        // 2. Determine Total Runs (Existing + New)
+        // Initialize recurrence if needed
+        if (!campaign.recurrence) {
+            campaign.recurrence = { type: 'CUSTOM', custom_dates: [] };
+        } else if (campaign.recurrence.type === 'NONE') {
+            campaign.recurrence.type = 'CUSTOM';
+            campaign.recurrence.custom_dates = [];
+        } else if (['DAILY', 'WEEKLY', 'MONTHLY'].includes(campaign.recurrence.type)) {
+             return res.status(400).json({ error: 'Cannot add custom dates to a periodic recurrence. Default to Custom first.' });
+        }
+
+        console.log(`[DEBUG] addSchedule - ID: ${id}`);
+        console.log(`[DEBUG] Recurrence Type: ${campaign.recurrence.type}`);
+        console.log(`[DEBUG] Existing Custom Dates:`, campaign.recurrence.custom_dates);
+        console.log(`[DEBUG] Additional Dates Count:`, additional_dates.length);
+
+        const totalRuns = calculateTotalRuns(campaign.recurrence, campaign.scheduled_at, additional_dates.length);
+        console.log(`[DEBUG] Calculated Total Runs: ${totalRuns}`);
+        
+        // 3. Calculate New Total Cost
+        const newTotalEstimatedCost = estimatedCostPerRun * totalRuns;
+        
+        // 4. Check Wallet against NEW Total
+        // We ensure wallet can cover the *entire* projected cost.
+        const wallet = await Wallet.findOne({ owner_id: user_id });
+        if (!wallet) return res.status(404).json({ error: 'Wallet not found' });
+        
+        if (wallet.balance < newTotalEstimatedCost) {
+             const shortfall = newTotalEstimatedCost - wallet.balance;
+             return res.status(400).json({ 
+                error: `Insufficient wallet balance for total ${totalRuns} run(s). Need ₹${(shortfall/100).toFixed(2)} more.`,
+                required: newTotalEstimatedCost,
+                balance: wallet.balance
+            });
+        }
+        
+        // 5. Update Campaign
+        // Add new dates
+        campaign.recurrence.custom_dates.push(...additional_dates);
+        
+        // Update costs
+        campaign.estimated_cost = newTotalEstimatedCost;
+        
+        // Auto-update budget_max if it was consistent with old estimated cost or if it falls short
+        // For addSchedule (explicit user action), we assume they want to increase budget to match if needed.
+        if (campaign.budget_max < newTotalEstimatedCost) {
+             campaign.budget_max = newTotalEstimatedCost;
+        }
+
+        await campaign.save();
+        
+        res.json(campaign);
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};

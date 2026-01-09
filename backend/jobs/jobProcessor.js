@@ -6,8 +6,17 @@ const Wallet = require('../models/Wallet');
 const whatsappService = require('../services/whatsappService');
 
 /**
- * Process a campaign execution job
- * Handles deduplication, billing, daily caps, and sending
+ * Process a campaign execution job from the queue.
+ * This is the core engine that runs when a campaign triggers.
+ * 
+ * Workflow:
+ * 1. Fetch Campaign and Target Groups.
+ * 2. Audience Construction & Deduplication (User in multiple groups? Send once).
+ * 3. Financial Processing (Debit Brand for run cost, Credit Admin for billable members).
+ * 4. Message Dispatch (Send via WhatsApp Service).
+ * 5. Status Update (Mark COMPLETED, save stats).
+ * 
+ * @param {Object} job - Bull Job object containing campaignId
  */
 exports.processCampaign = async (job) => {
     const { campaignId } = job.data;
@@ -17,33 +26,38 @@ exports.processCampaign = async (job) => {
         const campaign = await Campaign.findById(campaignId);
         if (!campaign) throw new Error('Campaign not found');
 
-        // 1. Fetch all target groups and members
+        // ==========================================
+        // 1. Fetch all target groups
+        // ==========================================
         const groups = await Group.find({ _id: { $in: campaign.selected_group_ids } });
         
         let totalSent = 0;
         let totalFailed = 0;
-        let totalBillableUnits = 0;
-        let adminEarnings = {}; // Map: adminId -> amount
-
+        let totalBillableUnits = 0; // Count of potential reaches (before dedupe) for billing
+        
         // Helper to track deduplication: phone -> primaryGroupId
         const messageRecipients = new Map(); 
+        const pendingCredits = []; // { adminId, amount, groupName }
 
+        // ==========================================
         // 2. Build Audience & Deduplicate
-        // Rule: Sort groups by some deterministic factor (e.g., creation date or ID) to pick "primary" group for a user
+        // ==========================================
+        // Rule: Sort groups by creation date (older first). 
+        // If a user is in multiple groups, the *first* group they appear in gets the credit ("primary").
         const sortedGroups = groups.sort((a, b) => a.createdAt - b.createdAt);
-
+        
         for (const group of sortedGroups) {
             const members = await GroupMember.find({ group_id: group._id, is_opted_out: false });
-            
+            let groupTotalEarnings = 0;
+
             for (const member of members) {
-                // BILLING: Every (group, member) pair is billable regardless of actual send
+                // BILLING RULE: Every (group, member) pair is billable regardless of actual send (Group Admin gets paid for renting their audience).
                 totalBillableUnits++;
 
                 // Calculate Revenue Split (e.g., 80% to Admin)
                 // Cost per msg is in paisa
                 const earning = Math.floor(group.price_per_message * 0.8);
-                const adminId = group.admin_id.toString();
-                adminEarnings[adminId] = (adminEarnings[adminId] || 0) + earning;
+                groupTotalEarnings += earning;
 
                 // DEDUPLICATION Logic
                 if (!messageRecipients.has(member.phone)) {
@@ -54,71 +68,81 @@ exports.processCampaign = async (job) => {
                     });
                 }
             }
+            
+            // Queue credit for this group admin
+            if (groupTotalEarnings > 0) {
+                pendingCredits.push({
+                    adminId: group.admin_id.toString(),
+                    amount: groupTotalEarnings,
+                    groupName: group.name
+                });
+            }
         }
 
         console.log(`[Job] Audience Analysis: ${totalBillableUnits} billable units, ${messageRecipients.size} unique recipients.`);
 
-        // 3. Process Finances (Bulk Wallet Updates) is usually done BEFORE sending to ensure funds, 
-        // but for MVP we might have pre-checked. 
-        // Ideally we should process payouts here.
-        // NOTE: Brand wallet was NOT deducted per member yet, only checked for total budget.
-        // Real implementation should deduct actual cost here or reserve it.
-        // For MVP, lets assume we deduct the TOTAL calculated cost now from Brand.
+        // ==========================================
+        // 3. Process Finances (Bulk Wallet Updates)
+        // ==========================================
         
-        const totalCost = campaign.estimated_cost; // Simplified for MVP, ideally assume calculate from billable units
+        // A. Deduct from Brand Wallet
+        // Logic: Debit cost for THIS run only (Billable Units * Cost Per Msg)
+        const costForThisRun = totalBillableUnits * (campaign.cost_per_msg || 0);
+        console.log(`[Job] Debiting ${costForThisRun} (Units: ${totalBillableUnits} * Cost: ${campaign.cost_per_msg})`);
         
-        // Deduct from Brand
         const brandWallet = await Wallet.findOne({ owner_id: campaign.brand_id });
         if (brandWallet) {
-            brandWallet.balance -= totalCost;
+            brandWallet.balance -= costForThisRun;
             brandWallet.transactions.push({
                 type: 'DEBIT',
-                amount: totalCost,
+                amount: costForThisRun,
                 description: `Campaign execution: ${campaign.name}`,
                 reference_id: campaign._id
             });
             await brandWallet.save();
         }
 
-        // Credit Group Admins
-        for (const [adminId, amount] of Object.entries(adminEarnings)) {
-            const adminWallet = await Wallet.findOne({ owner_id: adminId });
+        // B. Credit Group Admins
+        // Loop through pending credits and update each admin's wallet
+        for (const credit of pendingCredits) {
+            const adminWallet = await Wallet.findOne({ owner_id: credit.adminId });
             if (adminWallet) {
-                adminWallet.balance += amount;
+                adminWallet.balance += credit.amount;
                 adminWallet.transactions.push({
                     type: 'CREDIT',
-                    amount: amount,
+                    amount: credit.amount,
                     description: `Earnings from campaign: ${campaign.name}`,
-                    reference_id: campaign._id
+                    reference_id: campaign._id,
+                    metadata: { group_name: credit.groupName }
                 });
                 await adminWallet.save();
             }
         }
 
-        // 4. Send Messages (Deduplicated)
+        // ==========================================
+        // 4. Send Messages (Deduplicated List)
+        // ==========================================
         const recipientList = Array.from(messageRecipients.entries());
         
         for (const [phone, data] of recipientList) {
-            // Check Daily Cap (Mocked logic for now, using random check or ideally Redis)
-            // Ideally: await checkDailyCap(phone, data.groupId)
-            
             try {
-                // Send via BSP
+                // Send via BSP (WhatsApp Service)
                 await whatsappService.sendTemplateMessage(phone, campaign.content);
                 totalSent++;
                 
-                // Update specific Stats if we want granular tracking per group
-                // For MVP, we update Campaign global stats
+                // TODO: Update specific Stats if we want granular tracking per group
             } catch (err) {
                 console.error(`Failed to send to ${phone}:`, err.message);
                 totalFailed++;
             }
 
-            // Report progress periodically?
+            // Report progress periodically to Redis (can be used by UI)
             job.progress(Math.floor((totalSent + totalFailed) / recipientList.length * 100));
         }
 
+        // ==========================================
         // 5. Update Campaign Status
+        // ==========================================
         campaign.status = 'COMPLETED';
         campaign.stats.sent = totalSent;
         // In real world, 'delivered' comes from webhooks. For MVP we can set it equal to sent or slightly less
@@ -131,5 +155,6 @@ exports.processCampaign = async (job) => {
     } catch (err) {
         console.error(`[Job] Campaign ${campaignId} failed:`, err);
         // Mark as FAILED?
+        // Check if retry logic is needed in queues.js
     }
 };

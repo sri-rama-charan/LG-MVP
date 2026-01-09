@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
-import { Play, Plus, X, Search, Check, Clock, Megaphone, Trash2, AlertTriangle } from 'lucide-react';
+import { Play, Plus, X, Search, Check, Clock, Megaphone, Trash2, AlertTriangle, Calendar, Info } from 'lucide-react';
 
 export default function Campaigns() {
   const { user } = useAuth();
@@ -22,6 +22,7 @@ export default function Campaigns() {
     content: '',
     scheduleType: 'immediate', // 'immediate' or 'scheduled'
     scheduled_at: '',
+    recurrence: { type: 'NONE', end_date: '', custom_dates: [] },
     budget_max: ''
   });
   
@@ -168,6 +169,7 @@ export default function Campaigns() {
 
       if (formData.scheduleType === 'scheduled' && formData.scheduled_at) {
         payload.scheduled_at = formData.scheduled_at;
+        payload.recurrence = formData.recurrence;
       }
 
       if (formData.budget_max) {
@@ -191,6 +193,7 @@ export default function Campaigns() {
       content: '',
       scheduleType: 'immediate',
       scheduled_at: '',
+      recurrence: { type: 'NONE', end_date: '', custom_dates: [] },
       budget_max: ''
     });
     setSelectedGroupIds([]);
@@ -207,7 +210,7 @@ export default function Campaigns() {
   
   const handleLaunch = async (id) => {
       try {
-        await api.post(`/campaigns/${id}/launch`);
+        await api.post(`/campaigns/${id}/launch`, { immediate: true });
         fetchCampaigns();
       } catch (err) {
         alert(err.response?.data?.error || 'Failed to launch campaign');
@@ -275,8 +278,13 @@ const handleOpenCreateModal = () => {
       ) : (
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.5rem' }}>
           {campaigns.map(c => {
-            const estimatedTotal = c.budget_max ? Math.floor(c.budget_max / c.cost_per_msg) : (c.estimated_cost ? Math.floor(c.estimated_cost / c.cost_per_msg) : 0);
-            const progress = estimatedTotal > 0 ? Math.min((c.stats.sent / estimatedTotal) * 100, 100) : 0;
+            const estimatedTotalMessages = c.estimated_cost ? Math.ceil(c.estimated_cost / (c.cost_per_msg || 5)) : 0;
+            let progress = 0;
+            if (c.status === 'COMPLETED' && (!c.recurrence || c.recurrence.type === 'NONE')) {
+                progress = 100;
+            } else if (estimatedTotalMessages > 0) {
+                progress = Math.min((c.stats.sent / estimatedTotalMessages) * 100, 100);
+            }
             const statusColors = {
               DRAFT: { bg: 'rgba(156, 163, 175, 0.2)', color: '#9ca3af' },
               SCHEDULED: { bg: 'rgba(99, 102, 241, 0.2)', color: 'var(--accent-primary)' },
@@ -660,21 +668,126 @@ const handleOpenCreateModal = () => {
                   {formData.scheduleType === 'scheduled' && (
                     <div>
                       <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Scheduled Date & Time *</label>
-                      <input 
-                        type="datetime-local" 
-                        className="input"
-                        min={getMinDateTime()}
-                        value={formData.scheduled_at}
-                        onChange={e => setFormData({...formData, scheduled_at: e.target.value})}
-                        required={formData.scheduleType === 'scheduled'}
-                      />
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                        Messages will be sent between 9 AM - 9 PM only
+                      <div style={{ position: 'relative' }}>
+                        <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} />
+                        <input 
+                          type="datetime-local" 
+                          className="input"
+                          min={getMinDateTime()}
+                          value={formData.scheduled_at}
+                          onChange={e => setFormData({...formData, scheduled_at: e.target.value})}
+                          required={formData.scheduleType === 'scheduled'}
+                          style={{ 
+                            paddingLeft: '3rem', 
+                            width: '100%', 
+                            colorScheme: 'dark',
+                            cursor: 'pointer'
+                          }}
+                        />
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Info size={14} /> Messages will be sent between 9 AM - 9 PM only
                       </div>
                     </div>
                   )}
                 </div>
               </div>
+              {/* Recurrence */}
+              {formData.scheduleType === 'scheduled' && (
+                  <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'var(--bg-primary)', borderRadius: 'var(--radius-md)' }}>
+                    <h3 style={{ marginBottom: '1rem', fontSize: '1rem' }}>Recurrence (Optional)</h3>
+                    <div style={{ display: 'grid', gap: '1rem' }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Frequency</label>
+                            <select 
+                                className="input"
+                                value={formData.recurrence.type}
+                                onChange={e => setFormData({...formData, recurrence: { ...formData.recurrence, type: e.target.value }})}
+                            >
+                                <option value="NONE">One-time</option>
+                                <option value="DAILY">Daily</option>
+                                <option value="WEEKLY">Weekly</option>
+                                <option value="MONTHLY">Monthly</option>
+                                <option value="CUSTOM">Custom Dates</option>
+                            </select>
+                        </div>
+
+                        {formData.recurrence.type === 'CUSTOM' && (
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Select Dates</label>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                                    {formData.recurrence.custom_dates.map((date, idx) => (
+                                        <div key={idx} style={{ 
+                                            background: 'var(--accent-primary)', color: 'white', padding: '0.25rem 0.5rem', 
+                                            borderRadius: '4px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' 
+                                        }}>
+                                            {new Date(date).toLocaleDateString()}
+                                            <X size={12} style={{ cursor: 'pointer' }} onClick={() => {
+                                                const newDates = formData.recurrence.custom_dates.filter((_, i) => i !== idx);
+                                                setFormData({...formData, recurrence: { ...formData.recurrence, custom_dates: newDates }});
+                                            }} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ position: 'relative', marginBottom: '1rem' }}>
+                                    <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} />
+                                    <input 
+                                        type="date" 
+                                        className="input"
+                                        style={{ paddingLeft: '3rem', colorScheme: 'dark' }}
+                                        min={new Date().toISOString().split('T')[0]}
+                                        onChange={(e) => {
+                                            if (e.target.value) {
+                                                setFormData({
+                                                    ...formData, 
+                                                    recurrence: { 
+                                                        ...formData.recurrence, 
+                                                        custom_dates: [...formData.recurrence.custom_dates, e.target.value] 
+                                                    }
+                                                });
+                                                e.target.value = ''; // Reset picker
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Time for these messages</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <Clock size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }} />
+                                        <input 
+                                            type="time" 
+                                            className="input"
+                                            value={formData.recurrence.time || ''}
+                                            onChange={(e) => setFormData({
+                                                ...formData,
+                                                recurrence: { ...formData.recurrence, time: e.target.value }
+                                            })}
+                                            style={{ paddingLeft: '3rem', colorScheme: 'dark', width: '100%' }}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {['DAILY', 'WEEKLY', 'MONTHLY'].includes(formData.recurrence.type) && (
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem' }}>End Date</label>
+                                <input 
+                                    type="date" 
+                                    className="input"
+                                    min={formData.scheduled_at ? formData.scheduled_at.split('T')[0] : new Date().toISOString().split('T')[0]}
+                                    value={formData.recurrence.end_date}
+                                    onChange={e => setFormData({...formData, recurrence: { ...formData.recurrence, end_date: e.target.value }})}
+                                    style={{ colorScheme: 'dark' }}
+                                    required
+                                />
+                            </div>
+                        )}
+                    </div>
+                  </div>
+              )}
 
               {/* Budget (Optional) */}
               <div style={{ marginBottom: '1.5rem' }}>
@@ -700,7 +813,7 @@ const handleOpenCreateModal = () => {
                 <button 
                   type="button" 
                   className="btn" 
-                  style={{ background: 'var(--bg-tertiary)' }}
+                  style={{ background: 'var(--bg-tertiary)' , color: 'white'}}
                   onClick={() => { setShowCreateModal(false); resetForm(); }}
                 >
                   Cancel
@@ -757,7 +870,7 @@ const handleOpenCreateModal = () => {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
               <button 
                 className="btn" 
-                style={{ background: 'var(--bg-tertiary)' }}
+                style={{ background: 'var(--bg-tertiary)', color: 'white' }}
                 onClick={() => setDeleteConfirm(null)}
               >
                 Cancel

@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }) => {
       const res = await api.post('/auth/login', { email, password });
       setUser(res.data.user);
       localStorage.setItem('user', JSON.stringify(res.data.user));
+      if (res.data.token) localStorage.setItem('token', res.data.token);
       return { success: true };
     } catch (err) {
       return { success: false, error: err.response?.data?.error || 'Login failed' };
@@ -41,6 +42,7 @@ export const AuthProvider = ({ children }) => {
         // OTP verified? Auto login implies setting user
         setUser(res.data.user);
         localStorage.setItem('user', JSON.stringify(res.data.user));
+        if (res.data.token) localStorage.setItem('token', res.data.token);
         return { success: true };
     } catch (err) {
         return { success: false, error: err.response?.data?.error || 'Verification failed' };
@@ -50,6 +52,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
   };
 
   return (

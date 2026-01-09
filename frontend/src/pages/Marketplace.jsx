@@ -263,7 +263,8 @@ export default function Marketplace() {
                     height: '36px', 
                     background: 'var(--bg-tertiary)',
                     fontSize: '0.875rem',
-                    fontWeight: 500
+                    fontWeight: 500,
+                    color: 'white'
                   }}
                   onClick={() => openQuickCreateModal(g)}
                 >
@@ -370,7 +371,7 @@ export default function Marketplace() {
                 <button 
                   type="button" 
                   className="btn" 
-                  style={{ background: 'var(--bg-tertiary)' }}
+                  style={{ background: 'var(--bg-tertiary)' , color: 'white'}}
                   onClick={() => setShowQuickCreateModal(false)}
                 >
                   Cancel

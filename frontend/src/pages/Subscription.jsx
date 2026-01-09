@@ -80,9 +80,54 @@ export default function Subscription() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="text-center mb-10" style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-        <h1 className="text-3xl font-bold mb-2" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Upgrade your Brand</h1>
-        <p className="text-gray-400" style={{ color: 'var(--text-secondary)' }}>Unlock campaign creation and reach millions.</p>
+        <h1 className="text-3xl font-bold mb-2" style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Pro Subscriptions</h1>
+        <p className="text-gray-400" style={{ color: 'var(--text-secondary)' }}>Manage your plan and unlock premium features.</p>
       </div>
+
+      {/* Current Plan Details Section */}
+      <div className="card" style={{ marginBottom: '3rem', padding: '2rem', border: '1px solid var(--accent-primary)', background: 'linear-gradient(to right, rgba(99, 102, 241, 0.05), transparent)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                     <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>Current Subscription</h2>
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                         <div style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>
+                             Plan: <strong style={{ color: 'var(--accent-primary)' }}>{user?.subscription?.active ? (PLANS.find(p => p.id === user.subscription.plan_id)?.name || 'Active Plan') : 'Free Tier'}</strong>
+                         </div>
+                         <span style={{ 
+                             padding: '0.25rem 0.75rem', borderRadius: '1rem', 
+                             background: user?.subscription?.active ? 'rgba(16, 185, 129, 0.2)' : 'rgba(107, 114, 128, 0.2)', 
+                             color: user?.subscription?.active ? 'var(--success)' : 'var(--text-secondary)',
+                             fontSize: '0.75rem', fontWeight: 600
+                         }}>
+                             {user?.subscription?.active ? 'ACTIVE' : 'INACTIVE'}
+                         </span>
+                     </div>
+                </div>
+                {user?.subscription?.active && (
+                    <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Next Billing Date</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}</div>
+                    </div>
+                )}
+            </div>
+            
+            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                <div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Campaign Limit</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{user?.subscription?.active ? 'Unlimited' : '5 / month'}</div>
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Analytics</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{user?.subscription?.active ? 'Advanced' : 'Basic'}</div>
+                </div>
+                <div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Support</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{user?.subscription?.active ? 'Priority 24/7' : 'Email Only'}</div>
+                </div>
+            </div>
+      </div>
+
+      <h3 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem' }}>Available Upgrades</h3>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         {PLANS.map((plan) => {
@@ -406,7 +451,8 @@ export default function Subscription() {
                                             style={{ 
                                                 background: 'transparent', border: '1px solid #333', color: '#888', 
                                                 padding: '1rem', borderRadius: '10px', fontSize: '0.9rem', cursor: 'pointer',
-                                                flex: '0 0 auto'
+                                                flex: '0 0 auto',
+                                                color: 'white'
                                             }}
                                         >
                                             Cancel

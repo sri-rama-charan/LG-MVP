@@ -17,6 +17,11 @@ const CampaignSchema = new mongoose.Schema({
     read: { type: Number, default: 0 },
     failed: { type: Number, default: 0 }
   },
+  recurrence: {
+    type: { type: String, enum: ['NONE', 'DAILY', 'WEEKLY', 'MONTHLY', 'CUSTOM'], default: 'NONE' },
+    end_date: { type: Date },
+    custom_dates: [{ type: Date }]
+  },
   created_at: { type: Date, default: Date.now },
   completed_at: Date
 });

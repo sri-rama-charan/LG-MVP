@@ -24,6 +24,7 @@ router.get('/campaigns/estimate-cost', campaignController.estimateCost);
 router.post('/campaigns/:id/launch', campaignController.launchCampaign);
 router.post('/campaigns/:id/groups', campaignController.addGroups);
 router.delete('/campaigns/:id/groups/:groupId', campaignController.removeGroup);
+router.post('/campaigns/:id/schedule', campaignController.addSchedule);
 router.delete('/campaigns/:id', campaignController.deleteCampaign);
 
 // Wallet
@@ -39,5 +40,10 @@ router.post('/subscriptions/purchase', subscriptionController.purchaseSubscripti
 // Webhooks
 const webhookController = require('../controllers/webhookController');
 router.post('/webhooks/whatsapp', webhookController.handleWhatsappWebhook);
+
+// Dashboard
+const dashboardController = require('../controllers/dashboardController');
+const { authMiddleware } = require('../utils/authMiddleware');
+router.get('/dashboard/stats', authMiddleware, dashboardController.getDashboardStats);
 
 module.exports = router;

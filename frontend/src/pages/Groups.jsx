@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api';
-import { Plus, Users, X } from 'lucide-react';
+import { Plus, Users, X, Settings, MessageSquare, IndianRupee } from 'lucide-react';
 
 export default function Groups() {
   const { user } = useAuth();
@@ -68,30 +68,100 @@ export default function Groups() {
 
       <div className="grid">
         {groups.map(g => (
-          <div key={g._id} className="card">
-            <h3 style={{ margin: '0 0 0.5rem 0' }}>{g.name}</h3>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              Members: {g.member_count} / {g.approx_member_count || '?'} <br/>
-              Daily Cap: {g.daily_cap_per_member} <br/>
-              Price: ₹{(g.price_per_message / 100).toFixed(2)} / msg <br/>
-              <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                  {g.tags && Object.values(g.tags).filter(Boolean).map((t, i) => (
-                      <span key={i} style={{ background: 'var(--bg-tertiary)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>{t}</span>
-                  ))}
-              </div>
+          <div key={g._id} className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 0, overflow: 'hidden' }}>
+            {/* Card Header with Gradient Accent */}
+            <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border)', background: 'linear-gradient(to right, rgba(99, 102, 241, 0.05), transparent)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>{g.name}</h3>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                            Created {new Date().toLocaleDateString()}
+                        </div>
+                    </div>
+                    <span style={{ 
+                        padding: '0.25rem 0.6rem', 
+                        borderRadius: '1rem', 
+                        background: g.status === 'ACTIVE' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                        color: g.status === 'ACTIVE' ? 'var(--success)' : 'var(--danger)',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.025em'
+                    }}>
+                        {g.status}
+                    </span>
+                </div>
             </div>
-            <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ 
-                    padding: '0.25rem 0.5rem', 
-                    borderRadius: 'var(--radius-sm)', 
-                    background: g.status === 'ACTIVE' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    color: g.status === 'ACTIVE' ? 'var(--success)' : 'var(--danger)',
-                    fontSize: '0.75rem'
-                }}>
-                    {g.status}
-                </span>
-                <button className="btn" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', background: 'var(--bg-tertiary)' }} onClick={() => openMembersModal(g)}>
-                    <Users size={14} style={{ marginRight: '0.25rem' }} /> Manage
+
+            {/* Stats Grid */}
+            <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ padding: '0.5rem', borderRadius: '0.5rem', background: 'var(--bg-primary)', color: 'white' }}>
+                        <Users size={18} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Members</div>
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{g.member_count} <span style={{ color: '#52525b' }}>/ {g.approx_member_count || '?'}</span></div>
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ padding: '0.5rem', borderRadius: '0.5rem', background: 'var(--bg-primary)', color: 'white' }}>
+                        <MessageSquare size={18} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Daily Cap</div>
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{g.daily_cap_per_member}</div>
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ padding: '0.5rem', borderRadius: '0.5rem', background: 'var(--bg-primary)', color: 'white' }}>
+                        <IndianRupee size={18} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Price</div>
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{(g.price_per_message / 100).toFixed(2)} / msg</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tags and Footer */}
+            <div style={{ marginTop: 'auto', padding: '0 1.25rem 1.25rem 1.25rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                    {g.tags && Object.values(g.tags).filter(Boolean).map((t, i) => (
+                        <span key={i} style={{ 
+                            background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                            padding: '0.25rem 0.6rem', borderRadius: '6px', 
+                            fontSize: '0.7rem', color: 'var(--text-secondary)' 
+                        }}>
+                            {t}
+                        </span>
+                    ))}
+                    {(!g.tags || Object.values(g.tags).filter(Boolean).length === 0) && (
+                         <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No tags</span>
+                    )}
+                </div>
+
+                <button 
+                    className="btn" 
+                    style={{ 
+                        width: '100%', justifyContent: 'center', 
+                        background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                        padding: '0.75rem', color: 'var(--text-primary)',
+                        transition: 'all 0.2s',
+                        display: 'flex', alignItems: 'center', gap: '0.5rem'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                        e.currentTarget.style.color = 'white';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                    }}
+                    onClick={() => openMembersModal(g)}
+                >
+                     Manage Group
                 </button>
             </div>
           </div>
@@ -148,7 +218,7 @@ export default function Groups() {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button type="button" className="btn" style={{ background: 'var(--bg-tertiary)' }} onClick={() => setShowCreateModal(false)}>Cancel</button>
+                <button type="button" className="btn" style={{ background: 'var(--bg-tertiary)' , color: 'white'}} onClick={() => setShowCreateModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Create</button>
               </div>
             </form>
