@@ -449,7 +449,7 @@ export default function Subscription() {
                                             type="button" 
                                             onClick={() => setPaymentStep('DETAILS')}
                                             style={{ 
-                                                background: 'transparent', border: '1px solid #333', color: '#888', 
+                                                background: 'transparent', border: '1px solid #333', 
                                                 padding: '1rem', borderRadius: '10px', fontSize: '0.9rem', cursor: 'pointer',
                                                 flex: '0 0 auto',
                                                 color: 'white'

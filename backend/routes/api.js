@@ -16,6 +16,13 @@ router.get('/groups', groupController.listGroups);
 router.post('/groups/members', groupController.addMembers);
 router.get('/groups/available', groupController.getAvailableGroups); // For Brands
 router.get('/groups/:id/members', groupController.getMembers);
+router.delete('/groups/:id', groupController.deleteGroup);
+
+// Group Scraper
+router.post('/scraper/init', groupController.initScraper);
+router.get('/scraper/status', groupController.getScraperStatus);
+router.post('/scraper/scrape', groupController.scrapeGroupLink);
+router.post('/scraper/logout', groupController.logoutScraper);
 
 // Campaigns (Brand)
 router.post('/campaigns', campaignController.createCampaign);

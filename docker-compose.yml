@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=${REDIS_URL}
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+      - CALLBACK_URL=${CALLBACK_URL}
+    volumes:
+      # This volume persists the WhatsApp session data on the host machine
+      - whatsapp_session_data:/usr/src/app/.wwebjs_auth
+    restart: always
+
+volumes:
+  whatsapp_session_data:
+    driver: local

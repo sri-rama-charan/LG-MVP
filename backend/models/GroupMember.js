@@ -4,6 +4,8 @@ const GroupMemberSchema = new mongoose.Schema({
   group_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
   phone: { type: String, required: true }, // Indexed for performance
   is_opted_out: { type: Boolean, default: false },
+  isAdmin: { type: Boolean, default: false },
+  isSuperAdmin: { type: Boolean, default: false },
   daily_sent_count: { type: Number, default: 0 },
   last_sent_date: { type: Date },
   joined_at: { type: Date, default: Date.now }

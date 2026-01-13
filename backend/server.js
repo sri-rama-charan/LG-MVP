@@ -48,3 +48,11 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+// Graceful Shutdown
+const whatsappScraperService = require('./services/whatsappScraperService');
+process.on('SIGINT', async () => {
+    console.log('\nGracefully shutting down...');
+    await whatsappScraperService.logout();
+    process.exit(0);
+});

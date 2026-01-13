@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const GroupSchema = new mongoose.Schema({
   admin_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, required: true },
+  invite_link: { type: String }, // WhatsApp Invite Link for re-sync
   description: String,
   status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   daily_cap_per_member: { type: Number, default: 1 },

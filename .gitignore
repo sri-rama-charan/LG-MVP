@@ -40,3 +40,11 @@ Thumbs.db
 
 # Optional: Ignore backend uploads if storing locally
 backend/uploads/
+
+# WhatsApp Session Data
+.wwebjs_auth/
+backend/.wwebjs_auth/
+.wwebjs_cache/
+backend/.wwebjs_cache/
+.wwebjs_auth
+
