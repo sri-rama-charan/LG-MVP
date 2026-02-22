@@ -1,0 +1,23 @@
+{
+  "name": "leverage-groups",
+  "version": "1.0.0",
+  "description": "WhatsApp Group Leverage Platform",
+  "private": true,
+  "engines": {
+    "node": "18.x",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "install-all": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix backend install && npm --prefix frontend install && npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "test": "echo \"No tests configured\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["whatsapp", "groups", "messaging", "platform"],
+  "author": "",
+  "license": "ISC"
+}

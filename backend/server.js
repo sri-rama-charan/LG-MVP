@@ -25,7 +25,7 @@ app.use(morgan('dev'));  // HTTP Request logging
 // ==========================================
 // Database Connection
 // ==========================================
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/leveragegroups_mvp')
+mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/leveragegroups_mvp')
 .then(() => console.log('✅ MongoDB Connected'))
 .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
