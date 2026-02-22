@@ -1,5 +1,10 @@
 {
   "version": 2,
+  "buildCommand": "npm --prefix frontend run build",
+  "outputDirectory": "frontend/dist",
+  "env": {
+    "NODE_ENV": "production"
+  },
   "builds": [
     {
       "src": "frontend/package.json",
@@ -22,10 +27,5 @@
       "src": "/(.*)",
       "dest": "frontend/index.html"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "buildCommand": "npm --prefix frontend run build",
-  "outputDirectory": "frontend/dist"
+  ]
 }
