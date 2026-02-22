@@ -5,6 +5,12 @@
   "outputDirectory": "frontend/dist",
   "installCommand": "npm install && npm --prefix backend install && npm --prefix frontend install",
   "env": {
-    "Node_ENV": "production"
-  }
+    "NODE_ENV": "production"
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }
