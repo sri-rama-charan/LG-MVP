@@ -4,7 +4,7 @@
   "description": "WhatsApp Group Leverage Platform",
   "private": true,
   "engines": {
-    "node": "18.x",
+    "node": "24.x",
     "npm": ">=9.0.0"
   },
   "scripts": {
